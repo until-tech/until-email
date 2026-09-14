@@ -78,6 +78,11 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    console.log(
+      "CRON FIRED:",
+      new Date().toISOString()
+    );
+
     try {
       const now = new Date().toISOString();
 
@@ -224,7 +229,6 @@ export default {
     }
   }
 };
-
 
 function escapeHtml(text) {
   return String(text)
