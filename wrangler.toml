@@ -2,6 +2,9 @@ name = "until-email"
 main = "worker.js"
 compatibility_date = "2026-09-14"
 
+[observability]
+enabled = true
+head_sampling_rate = 1
+
 [triggers]
 crons = ["* * * * *"]
-
