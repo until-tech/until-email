@@ -1,0 +1,6 @@
+name = "until-email"
+main = "worker.js"
+compatibility_date = "2026-09-14"
+
+[triggers]
+crons = ["*/1 * * * *"]
