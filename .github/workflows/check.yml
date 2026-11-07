@@ -11,3 +11,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check JavaScript parses
         run: node --check worker.js
+      - name: Run delivery tests with mocked APIs
+        run: node --test tests/worker.test.mjs
