@@ -32,15 +32,44 @@ async function markStatus(env, id, from, to) {
   return (await response.json()).length === 1;
 }
 
+async function photoLinks(env, item) {
+  if (!Array.isArray(item.photo_paths) || !item.photo_paths.length) return "";
+  const links = [];
+  for (const path of item.photo_paths.slice(0, 10)) {
+    if (typeof path !== "string" || !path.startsWith(item.id + "/")) continue;
+    const response = await fetch(
+      `${env.SUPABASE_URL}/storage/v1/object/sign/message-photos/${path.split("/").map(encodeURIComponent).join("/")}`,
+      {
+        method: "POST",
+        headers: { ...dbHeaders(env), "Content-Type": "application/json" },
+        body: JSON.stringify({ expiresIn: 604800 })
+      }
+    );
+    if (!response.ok) {
+      console.error("Unable to sign photo", item.id, response.status);
+      continue;
+    }
+    const result = await response.json();
+    if (!result.signedURL) continue;
+    const url = new URL(result.signedURL, env.SUPABASE_URL);
+    if (url.origin !== new URL(env.SUPABASE_URL).origin) continue;
+    links.push(`<li><a href="${escapeHtml(url.href)}">View attached photo ${links.length + 1}</a></li>`);
+  }
+  return links.length
+    ? `<p>Photos (links expire after 7 days):</p><ul>${links.join("")}</ul>`
+    : "";
+}
+
 async function deliver(env, item) {
   // Claim exactly once: only a scheduled message can transition to sending.
   if (!(await markStatus(env, item.id, "scheduled", "sending"))) return;
   let sent = false;
   try {
+    const attachments = await photoLinks(env, item);
     const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:40px">
       <h1>Until now.</h1><p>Someone left this message for you.</p>
       <div style="margin:30px 0;padding:30px;background:#f5f5f5;white-space:pre-wrap">${escapeHtml(item.message)}</div>
-      <p style="color:#888">Delivered by UNTIL.</p></div>`;
+      <p style="color:#888">Delivered by UNTIL.</p>${attachments}</div>`;
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -86,7 +115,7 @@ export default {
       try {
         const now = new Date().toISOString();
         const response = await dbRequest(env,
-          `messages?status=eq.scheduled&delivery_date=lte.${encodeURIComponent(now)}&select=id,recipient_email,message,delivery_date&order=delivery_date.asc&limit=50`);
+          `messages?status=eq.scheduled&delivery_date=lte.${encodeURIComponent(now)}&select=id,recipient_email,message,delivery_date,photo_paths&order=delivery_date.asc&limit=50`);
         const items = await response.json();
         for (const item of items) await deliver(env, item);
       } catch (error) { console.error("Scheduled processing failed", String(error)); }
