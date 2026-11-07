@@ -51,7 +51,11 @@ async function photoLinks(env, item) {
     }
     const result = await response.json();
     if (!result.signedURL) continue;
-    const url = new URL(result.signedURL, env.SUPABASE_URL);
+    // Storage returns /object/sign/... (relative to /storage/v1).
+    // Using the project origin alone would generate a broken photo link.
+    const signedPath = result.signedURL;
+    if (!signedPath.startsWith("/object/sign/message-photos/")) continue;
+    const url = new URL(`/storage/v1${signedPath}`, env.SUPABASE_URL);
     if (url.origin !== new URL(env.SUPABASE_URL).origin) continue;
     links.push(`<li><a href="${escapeHtml(url.href)}">View attached photo ${links.length + 1}</a></li>`);
   }
