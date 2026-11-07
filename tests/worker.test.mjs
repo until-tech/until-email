@@ -88,3 +88,51 @@ test("failed provider response restores scheduled state for retry", async () => 
   });
   assert.equal(currentStatus, "scheduled");
 });
+
+test("private photo link is included only after successful signing", async () => {
+  let currentStatus = "scheduled";
+  let emailHtml = "";
+  const withPhoto = { ...item, photo_paths: [id + "/photo.png"] };
+  await invokeScheduled(async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes("/rest/v1/messages?") && !options.method) return json([withPhoto]);
+    if (u.includes("/storage/v1/object/sign/")) {
+      assert.equal(options.method, "POST");
+      return json({ signedURL: "/object/sign/message-photos/" + id + "/photo.png?token=private-test-token" });
+    }
+    if (options.method === "PATCH") {
+      const from = new URL(u).searchParams.get("status").replace("eq.", "");
+      assert.equal(from, currentStatus);
+      currentStatus = JSON.parse(options.body).status;
+      return json([{ id }]);
+    }
+    if (u.includes("api.resend.com")) {
+      emailHtml = JSON.parse(options.body).html;
+      return json({ id: "sent-with-photo" });
+    }
+    throw Error("Unexpected fetch: " + u);
+  });
+  assert.equal(currentStatus, "delivered");
+  assert.match(emailHtml, /\/storage\/v1\/object\/sign\/message-photos\//);
+  assert.match(emailHtml, /private-test-token/);
+});
+test("failed photo signing prevents incomplete email and schedules retry", async () => {
+  let currentStatus = "scheduled";
+  let sendCount = 0;
+  const withPhoto = { ...item, photo_paths: [id + "/photo.png"] };
+  await invokeScheduled(async (url, options = {}) => {
+    const u = String(url);
+    if (u.includes("/rest/v1/messages?") && !options.method) return json([withPhoto]);
+    if (u.includes("/storage/v1/object/sign/")) return json({ error: "storage unavailable" }, 503);
+    if (options.method === "PATCH") {
+      const from = new URL(u).searchParams.get("status").replace("eq.", "");
+      assert.equal(from, currentStatus);
+      currentStatus = JSON.parse(options.body).status;
+      return json([{ id }]);
+    }
+    if (u.includes("api.resend.com")) { sendCount++; return json({ id: "unexpected" }); }
+    throw Error("Unexpected fetch: " + u);
+  });
+  assert.equal(sendCount, 0);
+  assert.equal(currentStatus, "scheduled");
+});
