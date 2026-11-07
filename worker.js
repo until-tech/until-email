@@ -34,9 +34,13 @@ async function markStatus(env, id, from, to) {
 
 async function photoLinks(env, item) {
   if (!Array.isArray(item.photo_paths) || !item.photo_paths.length) return "";
+  if (item.photo_paths.length > 10) throw new Error("Too many photo paths");
   const links = [];
-  for (const path of item.photo_paths.slice(0, 10)) {
-    if (typeof path !== "string" || !path.startsWith(item.id + "/")) continue;
+  for (const path of item.photo_paths) {
+    // Never sign an arbitrary path supplied in a message row.
+    if (typeof path !== "string" || !path.startsWith(item.id + "/") || path.length > 250) {
+      throw new Error("Invalid photo path for message");
+    }
     const response = await fetch(
       `${env.SUPABASE_URL}/storage/v1/object/sign/message-photos/${path.split("/").map(encodeURIComponent).join("/")}`,
       {
@@ -46,22 +50,23 @@ async function photoLinks(env, item) {
       }
     );
     if (!response.ok) {
-      console.error("Unable to sign photo", item.id, response.status);
-      continue;
+      throw new Error(`Photo signing failed (HTTP ${response.status})`);
     }
     const result = await response.json();
-    if (!result.signedURL) continue;
-    // Storage returns /object/sign/... (relative to /storage/v1).
-    // Using the project origin alone would generate a broken photo link.
-    const signedPath = result.signedURL;
-    if (!signedPath.startsWith("/object/sign/message-photos/")) continue;
-    const url = new URL(`/storage/v1${signedPath}`, env.SUPABASE_URL);
-    if (url.origin !== new URL(env.SUPABASE_URL).origin) continue;
+    if (typeof result.signedURL !== "string") throw new Error("Missing signed photo URL");
+    // Storage can return a path relative to /storage/v1.
+    const raw = result.signedURL;
+    const url = new URL(
+      raw.startsWith("/object/") ? `/storage/v1${raw}` : raw,
+      env.SUPABASE_URL
+    );
+    if (url.origin !== new URL(env.SUPABASE_URL).origin ||
+        !url.pathname.startsWith("/storage/v1/object/sign/message-photos/")) {
+      throw new Error("Invalid signed photo URL");
+    }
     links.push(`<li><a href="${escapeHtml(url.href)}">View attached photo ${links.length + 1}</a></li>`);
   }
-  return links.length
-    ? `<p>Photos (links expire after 7 days):</p><ul>${links.join("")}</ul>`
-    : "";
+  return `<p>Photos (links expire after 7 days):</p><ul>${links.join("")}</ul>`;
 }
 
 async function deliver(env, item) {
