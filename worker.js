@@ -115,7 +115,7 @@ export default {
       try {
         const now = new Date().toISOString();
         const response = await dbRequest(env,
-          `messages?status=eq.scheduled&delivery_date=lte.${encodeURIComponent(now)}&select=id,recipient_email,message,delivery_date,photo_paths&order=delivery_date.asc&limit=50`);
+          `messages?status=eq.scheduled&created_at=gte.${encodeURIComponent(env.DELIVERY_CREATED_AFTER || "2026-11-07T00:00:00Z")}&delivery_date=lte.${encodeURIComponent(now)}&select=id,recipient_email,message,delivery_date,photo_paths&order=delivery_date.asc&limit=50`);
         const items = await response.json();
         for (const item of items) await deliver(env, item);
       } catch (error) { console.error("Scheduled processing failed", String(error)); }
