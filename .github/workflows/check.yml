@@ -1,0 +1,15 @@
+name: Check UNTIL email worker
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check JavaScript parses
+        run: node --check worker.js
+      - name: Run delivery tests with mocked APIs
+        run: node --test tests/worker.test.mjs
